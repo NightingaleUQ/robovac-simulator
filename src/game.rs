@@ -145,13 +145,29 @@ impl Room {
             Action::SUCK => {}
         }
     }
-    pub fn draw(&self) -> Result<()> {
+    pub fn draw(&self, first_time: bool) -> Result<()> {
         let mut stdout = stdout();
-        queue!(stdout, terminal::Clear(terminal::ClearType::All))?;
+        let draw_xmin;
+        let draw_xmax;
+        let draw_ymin;
+        let draw_ymax;
+        if first_time {
+            queue!(stdout, terminal::Clear(terminal::ClearType::All))?;
+            draw_xmin = 0;
+            draw_xmax = self.xsize;
+            draw_ymin = 0;
+            draw_ymax = self.ysize;
+        } else {
+            /* Just redraw an area around the robot. */
+            draw_xmin = if self.x - 5 >= 0 {self.x - 5} else {0};
+            draw_xmax = if self.x + 5 < self.xsize {self.x + 5} else {self.xsize};
+            draw_ymin = if self.y - 5 >= 0 {self.y - 5} else {0};
+            draw_ymax = if self.y + 5 < self.ysize {self.y + 5} else {self.ysize};
+        }
 
         /* Draw room features */
-        for x in 0..self.xsize {
-            for y in 0..self.ysize {
+        for x in draw_xmin..draw_xmax {
+            for y in draw_ymin..draw_ymax {
                 let i: usize = (y * self.xsize + x) as usize;
                 let (xscr, yscr) = ((2 * x + 1) as u16, (y + 1) as u16);
                 queue!(stdout, cursor::MoveTo(xscr, yscr))?;
@@ -165,7 +181,9 @@ impl Room {
                     -1 => {
                         queue!(stdout, SetForegroundColor(Color::Cyan), Print("OO"))?;
                     }
-                    0 => {},
+                    0 => {
+                        queue!(stdout, Print("  "))?;
+                    }
                     d => {
                         match d {
                             1 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(243)))? },
@@ -236,29 +254,31 @@ impl Room {
         }
         queue!(stdout, ResetColor)?;
 
-        /* Draw border around room */
-        queue!(stdout, cursor::MoveTo(0, 0), Print("\u{2554}"))?;
-        for _ in 0..self.xsize {
-            queue!(stdout, Print("\u{2550}\u{2550}"))?;
-        }
-        queue!(stdout, Print("\u{2557}"))?;
-        queue!(stdout, cursor::MoveTo(0, (self.ysize + 1) as u16), Print("\u{255A}"))?;
-        for _ in 0..self.xsize {
-            queue!(stdout, Print("\u{2550}\u{2550}"))?;
-        }
-        queue!(stdout, Print("\u{255D}"))?;
-        for i in 0..(self.ysize as u16) {
+        if first_time {
+            /* Draw border around room */
+            queue!(stdout, cursor::MoveTo(0, 0), Print("\u{2554}"))?;
+            for _ in 0..self.xsize {
+                queue!(stdout, Print("\u{2550}\u{2550}"))?;
+            }
+            queue!(stdout, Print("\u{2557}"))?;
+            queue!(stdout, cursor::MoveTo(0, (self.ysize + 1) as u16), Print("\u{255A}"))?;
+            for _ in 0..self.xsize {
+                queue!(stdout, Print("\u{2550}\u{2550}"))?;
+            }
+            queue!(stdout, Print("\u{255D}"))?;
+            for i in 0..(self.ysize as u16) {
+                queue!(stdout,
+                       cursor::MoveTo(0, i + 1),
+                       Print("\u{2551}"),
+                       cursor::MoveTo((self.xsize * 2 + 1) as u16, (i + 1) as u16),
+                       Print("\u{2551}"))?;
+            }
             queue!(stdout,
-                   cursor::MoveTo(0, i + 1),
-                   Print("\u{2551}"),
-                   cursor::MoveTo((self.xsize * 2 + 1) as u16, (i + 1) as u16),
-                   Print("\u{2551}"))?;
+                   cursor::MoveTo(1, 0),
+                   SetForegroundColor(Color::Green),
+                   Print(" Robot Vacuum Simulator! "),
+                   ResetColor)?;
         }
-        queue!(stdout,
-               cursor::MoveTo(1, 0),
-               SetForegroundColor(Color::Green),
-               Print(" Robot Vacuum Simulator! "),
-               ResetColor)?;
 
         stdout.flush()?;
         Ok(())

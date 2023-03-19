@@ -22,7 +22,7 @@ fn main() {
     let (w, h): (i32, i32) = (((w - 2) / 2) as i32, (h - 8) as i32);
     
     let mut room = Room::new(w, h);
-    _ = room.draw();
+    _ = room.draw(true);
 
     loop {
         let read = event::read().unwrap();
@@ -44,7 +44,7 @@ fn main() {
             }
             _ => { continue; }
         }
-        _ = room.draw();
+        _ = room.draw(false);
     }
     _ = stdout().execute(terminal::Clear(terminal::ClearType::All));
 }
