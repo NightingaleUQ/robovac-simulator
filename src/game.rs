@@ -23,25 +23,25 @@ pub struct Room {
      *  0: Empty
      * -1: Charging pad */
     board: Vec<i32>,
-    xsize: u16,
-    ysize: u16,
+    xsize: i32,
+    ysize: i32,
 
     /* Robot position and heading:
      * Robots occupy a 4x4 space. Origin is at 1, 1. */
-    x: u16,
-    y: u16,
-    dirn: i16, /* 0: UP, 1: RIGHT, 2: DOWN, 3: LEFT */
+    x: i32,
+    y: i32,
+    dirn: i32, /* 0: UP, 1: RIGHT, 2: DOWN, 3: LEFT */
 }
 
 impl Room {
-    pub fn new(xsize: u16, ysize: u16) -> Room {
+    pub fn new(xsize: i32, ysize: i32) -> Room {
         let mut rng = rand::thread_rng();
-        let mut board: Vec<i32> = vec![0; (xsize * ysize).into()];
+        let mut board: Vec<i32> = vec![0; (xsize * ysize) as usize];
         /* Place dirt */
         for _ in 0..((xsize * ysize) / 10) {
             let x = rng.gen_range(0..xsize);
             let y = rng.gen_range(0..ysize);
-            let i: usize = (y * xsize + x).into();
+            let i: usize = (y * xsize + x) as usize;
             if board[i] >= 0 {
                 board[i] += 1;
             }
@@ -77,8 +77,8 @@ impl Room {
         /* Draw room features */
         for x in 0..self.xsize {
             for y in 0..self.ysize {
-                let i: usize = (y * self.xsize + x).into();
-                let (xscr, yscr) = ((2 * x + 1), (y + 1));
+                let i: usize = (y * self.xsize + x) as usize;
+                let (xscr, yscr) = ((2 * x + 1) as u16, (y + 1) as u16);
                 match &self.board[i] {
                     -1 => {
                         queue!(stdout,
@@ -89,9 +89,8 @@ impl Room {
                     }
                     0 => {},
                     d => {
-                        let (x, y): (u16, u16) = (x.try_into().unwrap(), y.try_into().unwrap());
                         queue!(stdout,
-                               cursor::MoveTo((2 * x) + 1, y + 1))?;
+                               cursor::MoveTo(xscr, yscr))?;
                         match d {
                             1 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(243)))? },
                             2 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(247)))? },
@@ -107,7 +106,7 @@ impl Room {
         }
 
         /* Draw the robot */
-        let (xorig, yorig) = ((2 * self.x + 1), (self.y + 1));
+        let (xorig, yorig): (u16, u16) = ((2 * self.x + 1) as u16, (self.y + 1) as u16);
         //queue!(stdout, SetForegroundColor(Color::Black), SetBackgroundColor(Color::Grey))?;
         match self.dirn {
             0 => {
@@ -168,16 +167,16 @@ impl Room {
             queue!(stdout, Print("\u{2550}\u{2550}"))?;
         }
         queue!(stdout, Print("\u{2557}"))?;
-        queue!(stdout, cursor::MoveTo(0, self.ysize + 1), Print("\u{255A}"))?;
+        queue!(stdout, cursor::MoveTo(0, (self.ysize + 1) as u16), Print("\u{255A}"))?;
         for _ in 0..self.xsize {
             queue!(stdout, Print("\u{2550}\u{2550}"))?;
         }
         queue!(stdout, Print("\u{255D}"))?;
-        for i in 0..self.ysize {
+        for i in 0..(self.ysize as u16) {
             queue!(stdout,
                    cursor::MoveTo(0, i + 1),
                    Print("\u{2551}"),
-                   cursor::MoveTo(self.xsize * 2 + 1, i + 1),
+                   cursor::MoveTo((self.xsize * 2 + 1) as u16, (i + 1) as u16),
                    Print("\u{2551}"))?;
         }
         queue!(stdout,

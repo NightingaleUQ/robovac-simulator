@@ -19,7 +19,7 @@ fn main() {
     _ = stdout().execute(cursor::Hide);
 
     let (w, h) = terminal::size().unwrap(); 
-    let (w, h) = ((w - 2) / 2, h - 8);
+    let (w, h): (i32, i32) = (((w - 2) / 2) as i32, (h - 8) as i32);
     
     let mut room = Room::new(w, h);
     _ = room.draw();
