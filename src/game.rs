@@ -1,4 +1,6 @@
-use rand::Rng;
+use rand::{
+    Rng, rngs::ThreadRng,
+};
 
 use crossterm::{
     style::{Color, Print, ResetColor, SetForegroundColor},
@@ -21,7 +23,9 @@ pub struct Room {
     /* Game board, stored in an array (xsize * ysize) in length 
      * >0: Amount of dirt on space
      *  0: Empty
-     * -1: Charging pad */
+     * -1: Charging pad
+     * -2: Obstacle
+     * -3: Hazard */
     board: Vec<i32>,
     xsize: i32,
     ysize: i32,
@@ -36,23 +40,94 @@ pub struct Room {
 impl Room {
     pub fn new(xsize: i32, ysize: i32) -> Room {
         let mut rng = rand::thread_rng();
-        let mut board: Vec<i32> = vec![0; (xsize * ysize) as usize];
-        /* Place dirt */
-        for _ in 0..((xsize * ysize) / 10) {
-            let x = rng.gen_range(0..xsize);
-            let y = rng.gen_range(0..ysize);
-            let i: usize = (y * xsize + x) as usize;
-            if board[i] >= 0 {
-                board[i] += 1;
-            }
-        }
+        let board: Vec<i32> = vec![0; (xsize * ysize) as usize];
+        let mut room = Room{xsize, ysize, board, x: 1, y: ysize - 3, dirn: 0};
         /* Charging station */
         for x in 0..4 {
             for y in 0..4 {
-                board[(((ysize - 4 + y) * xsize) + x) as usize] = -1;
+                room.board[(((ysize - 4 + y) * xsize) + x) as usize] = -1;
             }
         }
-        Room{xsize, ysize, board, x: 1, y: ysize - 3, dirn: 0}
+        /* Place obstacles and hazards */
+        for _ in 0..((xsize * ysize) / 200) {
+            room.place_obstacle_or_hazard(rng.gen_range(4..12), -2, &mut rng);
+            room.place_obstacle_or_hazard(rng.gen_range(4..12), -3, &mut rng);
+        }
+        /* Distribute dirt */
+        for _ in 0..((xsize * ysize) / 10) {
+            room.place_dirt(&mut rng);
+        }
+        room
+    }
+    fn place_dirt(&mut self, rng: &mut ThreadRng) {
+        let x = rng.gen_range(0..self.xsize);
+        let y = rng.gen_range(0..self.ysize);
+        let i: usize = (y * self.xsize + x) as usize;
+        if self.board[i] >= 0 {
+            self.board[i] += 1;
+        }
+    }
+    fn place_obstacle_or_hazard(&mut self, size: i32, tiletype: i32, rng: &mut ThreadRng) {
+        /* We're going to randomly generate a shape by growing it from the
+         * middle. We begin with a core and keep track of its bounds. */
+        let xseed = rng.gen_range(0..self.xsize);
+        let yseed = rng.gen_range(0..self.ysize);
+        let mut xmin: i32 = xseed;
+        let mut xmax: i32 = xseed;
+        let mut ymin: i32 = yseed;
+        let mut ymax: i32 = yseed;
+        let i = (yseed * self.xsize + xseed) as usize;
+        if self.board[i] == 0 {
+            self.board[i] = tiletype;
+        } else {
+            return;
+        }
+
+        /* And then we add adjacent cells, sliding them out in one of four directions. */
+        for _ in 0..size {
+            let dirn = rng.gen_range(0..4);
+            let dx: i32;
+            let dy: i32;
+            let startx: i32;
+            let starty: i32;
+            if dirn & 0x1 == 0 {
+                /* Even: Up or down */
+                dx = 0;
+                dy = if dirn == 0 {-1} else {1};
+                startx = rng.gen_range(xmin..=xmax);
+                starty = yseed;
+            } else {
+                /* Odd: Right or left */
+                dx = if dirn == 1 {1} else {-1};
+                dy = 0;
+                startx = xseed;
+                starty = rng.gen_range(ymin..=ymax);
+            }
+            let mut x = startx;
+            let mut y = starty;
+            /* Slide outwards */
+            loop {
+                x += dx;
+                y += dy;
+                if x < 0 || x >= self.xsize || y < 0 || y >= self.ysize {
+                    /* Out of bounds, don't grow here */
+                    break;
+                }
+                if x < 8 && y > self.ysize - 8 {
+                    /* Too close to charging station */
+                    break;
+                }
+                let i = (y * self.xsize + x) as usize;
+                if self.board[i] == 0 {
+                    self.board[i] = tiletype;
+                    xmin = if x < xmin {x} else {xmin};
+                    xmax = if x > xmax {x} else {xmax};
+                    ymin = if y < ymin {y} else {ymin};
+                    ymax = if y > ymax {y} else {ymax};
+                    break;
+                }
+            }
+        }
     }
     pub fn perform_action(&mut self, a: Action) {
         match a {
@@ -79,29 +154,29 @@ impl Room {
             for y in 0..self.ysize {
                 let i: usize = (y * self.xsize + x) as usize;
                 let (xscr, yscr) = ((2 * x + 1) as u16, (y + 1) as u16);
+                queue!(stdout, cursor::MoveTo(xscr, yscr))?;
                 match &self.board[i] {
+                    -3 => {
+                        queue!(stdout, SetForegroundColor(Color::Red), Print("!!"))?;
+                    }
+                    -2 => {
+                        queue!(stdout, SetForegroundColor(Color::Yellow), Print("XX"))?;
+                    }
                     -1 => {
-                        queue!(stdout,
-                               cursor::MoveTo(xscr, yscr),
-                               SetForegroundColor(Color::Cyan),
-                               Print("OO"),
-                               ResetColor)?;
+                        queue!(stdout, SetForegroundColor(Color::Cyan), Print("OO"))?;
                     }
                     0 => {},
                     d => {
-                        queue!(stdout,
-                               cursor::MoveTo(xscr, yscr))?;
                         match d {
                             1 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(243)))? },
                             2 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(247)))? },
                             3 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(251)))? },
                             _ => { queue!(stdout, SetForegroundColor(Color::AnsiValue(255)))? },
                         }
-                        queue!(stdout,
-                               Print("<>"),
-                               ResetColor)?;
+                        queue!(stdout, Print("<>"))?;
                     }
                 }
+                queue!(stdout, ResetColor)?;
             }
         }
 
