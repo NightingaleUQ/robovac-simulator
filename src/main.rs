@@ -18,8 +18,8 @@ fn main() {
     terminal::enable_raw_mode().expect("Failed to enable RAW mode.");
     _ = stdout().execute(cursor::Hide);
 
-    let (w, h) = terminal::size().unwrap(); 
-    let (w, h): (i32, i32) = (((w - 2) / 2) as i32, (h - 8) as i32);
+    let (termw, termh) = terminal::size().unwrap();
+    let (w, h): (i32, i32) = (((termw - 2) / 2) as i32, (termh - 8) as i32);
     
     let mut room = Room::new(w, h);
     _ = room.draw(true);

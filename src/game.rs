@@ -173,11 +173,23 @@ impl Room {
                     3 => { self.x -= 1; }
                     _ => {}
                 };
-                -0.8
+                -0.1
             }
-            Action::L => { self.dirn = (self.dirn - 1) & 0x3; -0.4 }
-            Action::R => { self.dirn = (self.dirn + 1) & 0x3; -0.4 }
-            Action::SUCK => {1.0}
+            Action::L => { self.dirn = (self.dirn - 1) & 0x3; -0.2 }
+            Action::R => { self.dirn = (self.dirn + 1) & 0x3; -0.2 }
+            Action::SUCK => {
+                /* For every square covered by the vacuum, reduce dirt level by 1
+                 * Reward 1 for each dirt removed this way, minus a constant -0.2 */
+                self.get_suction_range().iter().filter(|(x, y)| {
+                    if *x >= 0 && *x < self.xsize && *y >= 0 && *y < self.ysize
+                        && self.board[(y * self.xsize + x) as usize] > 0 {
+                        self.board[(y * self.xsize + x) as usize] -= 1;
+                        true
+                    } else {
+                        false
+                    }
+                }).collect::<Vec<&(i32, i32)>>().len() as f64 * 1.0 - 0.2
+            }
         };
         self.r += r;
         r
@@ -313,9 +325,22 @@ impl Room {
                    ResetColor)?;
             /* Information */
             queue!(stdout, cursor::MoveTo(0, (self.ysize + 2) as u16), Print("Score:"))?;
+            queue!(stdout, cursor::MoveTo(0, (self.ysize + 4) as u16),
+                    SetForegroundColor(Color::Cyan), Print("Move forward"),
+                    ResetColor, Print(" : Up arrow | "),
+                    SetForegroundColor(Color::Cyan), Print("Turn anticlockwise"),
+                    ResetColor, Print(": Left arrow | "),
+                    SetForegroundColor(Color::Cyan), Print("Turn clockwise"),
+                    ResetColor, Print(": Right arrow"),
+                    cursor::MoveTo(0, (self.ysize + 5) as u16),
+                    SetForegroundColor(Color::Cyan), Print("Suck"), ResetColor,
+                    Print(": Spacebar (doing so over the charging pad advances to the next level)")
+                    )?;
+            queue!(stdout, cursor::MoveTo(0, (self.ysize + 7) as u16), SetForegroundColor(Color::Magenta),
+                    Print("Quit"), ResetColor, Print(": ESC or Q"))?;
         }
         /* Information */
-        queue!(stdout, cursor::MoveTo(10, (self.ysize + 2) as u16), Print(format!("{:7.1}", self.r)))?;
+        queue!(stdout, cursor::MoveTo(7, (self.ysize + 2) as u16), Print(format!("{:7.1}", self.r)))?;
 
         stdout.flush()?;
         Ok(())
