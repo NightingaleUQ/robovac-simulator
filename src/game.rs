@@ -3,7 +3,7 @@ use rand::{
 };
 
 use crossterm::{
-    style::{Color, Print, ResetColor, SetForegroundColor},
+    style::{Color, Print, ResetColor, SetForegroundColor, SetBackgroundColor},
     terminal, cursor,
     queue, Result,
 };
@@ -35,13 +35,16 @@ pub struct Room {
     x: i32,
     y: i32,
     dirn: i32, /* 0: UP, 1: RIGHT, 2: DOWN, 3: LEFT */
+
+    /* Cumulative reward */
+    r: f64,
 }
 
 impl Room {
     pub fn new(xsize: i32, ysize: i32) -> Room {
         let mut rng = rand::thread_rng();
         let board: Vec<i32> = vec![0; (xsize * ysize) as usize];
-        let mut room = Room{xsize, ysize, board, x: 1, y: ysize - 3, dirn: 0};
+        let mut room = Room{xsize, ysize, board, x: 1, y: ysize - 3, dirn: 0, r: 0.0};
         /* Charging station */
         for x in 0..4 {
             for y in 0..4 {
@@ -138,14 +141,30 @@ impl Room {
         let ymin = rng.gen_range(0..self.ysize);
         let xmax = if xmin + xsize < self.xsize {xmin + xsize} else {self.xsize};
         let ymax = if ymin + ysize < self.ysize {ymin + ysize} else {self.ysize};
+        /* Don't get too close to the charging pad */
+        if xmin < 8 && ymax > self.ysize - 8 {
+            return;
+        }
         for x in xmin..xmax {
             for y in ymin..ymax {
                 self.board[(y * self.xsize + x) as usize] = -3;
             }
         }
     }
-    pub fn perform_action(&mut self, a: Action) {
-        match a {
+    fn get_suction_range(&self) -> [(i32, i32); 4] {
+        /* Returns the four squares immediately in front of the robot,
+         * In order from left-to-right relative to the robot's rotation.  */
+        match self.dirn {
+            0 => [(self.x-1, self.y-1), (self.x, self.y-2), (self.x+1, self.y-2), (self.x+2, self.y-1)],
+            1 => [(self.x+2, self.y-1), (self.x+3, self.y), (self.x+3, self.y+1), (self.x+2, self.y+2)],
+            2 => [(self.x+2, self.y+2), (self.x+1, self.y+3), (self.x, self.y+3), (self.x-1, self.y+2)],
+            3 => [(self.x-1, self.y+2), (self.x-2, self.y+1), (self.x-2, self.y), (self.x-1, self.y-1)],
+            _ => [(-1, -1), (-1, -1), (-1, -1), (-1, -1)],
+        }
+    }
+    /* Returns the reward from taking an action */
+    pub fn perform_action(&mut self, a: Action) -> f64 {
+        let r = match a {
             Action::FORWARD => {
                 match self.dirn {
                     0 => { self.y -= 1; }
@@ -153,12 +172,15 @@ impl Room {
                     2 => { self.y += 1; }
                     3 => { self.x -= 1; }
                     _ => {}
-                }
+                };
+                -0.8
             }
-            Action::L => { self.dirn = (self.dirn - 1) & 0x3; }
-            Action::R => { self.dirn = (self.dirn + 1) & 0x3; }
-            Action::SUCK => {}
-        }
+            Action::L => { self.dirn = (self.dirn - 1) & 0x3; -0.4 }
+            Action::R => { self.dirn = (self.dirn + 1) & 0x3; -0.4 }
+            Action::SUCK => {1.0}
+        };
+        self.r += r;
+        r
     }
     pub fn draw(&self, first_time: bool) -> Result<()> {
         let mut stdout = stdout();
@@ -180,25 +202,22 @@ impl Room {
             draw_ymax = if self.y + 5 < self.ysize {self.y + 5} else {self.ysize};
         }
 
+        let suction_range = self.get_suction_range();
+
         /* Draw room features */
         for x in draw_xmin..draw_xmax {
             for y in draw_ymin..draw_ymax {
                 let i: usize = (y * self.xsize + x) as usize;
                 let (xscr, yscr) = ((2 * x + 1) as u16, (y + 1) as u16);
                 queue!(stdout, cursor::MoveTo(xscr, yscr))?;
+                if suction_range.contains(&(x, y)) {
+                    queue!(stdout, SetBackgroundColor(Color::AnsiValue(237)))?;
+                }
                 match &self.board[i] {
-                    -3 => {
-                        queue!(stdout, SetForegroundColor(Color::Red), Print("!!"))?;
-                    }
-                    -2 => {
-                        queue!(stdout, SetForegroundColor(Color::Yellow), Print("XX"))?;
-                    }
-                    -1 => {
-                        queue!(stdout, SetForegroundColor(Color::Cyan), Print("OO"))?;
-                    }
-                    0 => {
-                        queue!(stdout, Print("  "))?;
-                    }
+                    -3 => { queue!(stdout, SetForegroundColor(Color::Red), Print("!!"))?; }
+                    -2 => { queue!(stdout, SetForegroundColor(Color::Yellow), Print("XX"))?; }
+                    -1 => { queue!(stdout, SetForegroundColor(Color::Cyan), Print("OO"))?; }
+                    0 => { queue!(stdout, Print("  "))?; }
                     d => {
                         match d {
                             1 => { queue!(stdout, SetForegroundColor(Color::AnsiValue(243)))? },
@@ -215,7 +234,6 @@ impl Room {
 
         /* Draw the robot */
         let (xorig, yorig): (u16, u16) = ((2 * self.x + 1) as u16, (self.y + 1) as u16);
-        //queue!(stdout, SetForegroundColor(Color::Black), SetBackgroundColor(Color::Grey))?;
         match self.dirn {
             0 => {
                 /* UP */
@@ -293,7 +311,11 @@ impl Room {
                    SetForegroundColor(Color::Green),
                    Print(" Robot Vacuum Simulator! "),
                    ResetColor)?;
+            /* Information */
+            queue!(stdout, cursor::MoveTo(0, (self.ysize + 2) as u16), Print("Score:"))?;
         }
+        /* Information */
+        queue!(stdout, cursor::MoveTo(10, (self.ysize + 2) as u16), Print(format!("{:7.1}", self.r)))?;
 
         stdout.flush()?;
         Ok(())

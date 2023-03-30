@@ -26,24 +26,22 @@ fn main() {
 
     loop {
         let read = event::read().unwrap();
-        match read {
-            Event::Key(event::KeyEvent{code: event::KeyCode::Up, ..}) => {
-                room.perform_action(Action::FORWARD);
-            }
-            Event::Key(event::KeyEvent{code: event::KeyCode::Left, ..}) => {
-                room.perform_action(Action::L);
-            }
-            Event::Key(event::KeyEvent{code: event::KeyCode::Right, ..}) => {
-                room.perform_action(Action::R);
-            }
-            Event::Key(event::KeyEvent{code: event::KeyCode::Char(' '), ..}) => {
-                room.perform_action(Action::SUCK);
-            }
-            Event::Key(event::KeyEvent{code: event::KeyCode::Esc, ..}) => {
-                break;
-            }
-            _ => { continue; }
-        }
+        let a = match read {
+            Event::Key(event::KeyEvent{code: event::KeyCode::Up, ..})
+                => Action::FORWARD,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Left, ..})
+                => Action::L,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Right, ..})
+                => Action::R,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Char(' '), ..})
+                => Action::SUCK,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Esc, ..}) |
+            Event::Key(event::KeyEvent{code: event::KeyCode::Char('q'), ..})
+                => { break; }
+            _
+                => { continue; }
+        };
+        room.perform_action(a);
         _ = room.draw(false);
     }
     _ = stdout().execute(terminal::Clear(terminal::ClearType::All));
