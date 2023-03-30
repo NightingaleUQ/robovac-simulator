@@ -48,12 +48,13 @@ impl Room {
                 room.board[(((ysize - 4 + y) * xsize) + x) as usize] = -1;
             }
         }
-        /* Place obstacles and hazards */
-        for _ in 0..((xsize * ysize) / 200) {
-            room.place_obstacle_or_hazard(rng.gen_range(4..12), -2, &mut rng);
-            room.place_obstacle_or_hazard(rng.gen_range(4..12), -3, &mut rng);
+        /* Generate room contents */
+        for _ in 0..((xsize * ysize) / 1000) {
+            room.place_hazard(rng.gen_range(4..12), rng.gen_range(4..12), &mut rng);
         }
-        /* Distribute dirt */
+        for _ in 0..((xsize * ysize) / 200) {
+            room.place_obstacle(rng.gen_range(4..12), &mut rng);
+        }
         for _ in 0..((xsize * ysize) / 10) {
             room.place_dirt(&mut rng);
         }
@@ -67,7 +68,7 @@ impl Room {
             self.board[i] += 1;
         }
     }
-    fn place_obstacle_or_hazard(&mut self, size: i32, tiletype: i32, rng: &mut ThreadRng) {
+    fn place_obstacle(&mut self, size: i32, rng: &mut ThreadRng) {
         /* We're going to randomly generate a shape by growing it from the
          * middle. We begin with a core and keep track of its bounds. */
         let xseed = rng.gen_range(0..self.xsize);
@@ -78,7 +79,7 @@ impl Room {
         let mut ymax: i32 = yseed;
         let i = (yseed * self.xsize + xseed) as usize;
         if self.board[i] == 0 {
-            self.board[i] = tiletype;
+            self.board[i] = -2;
         } else {
             return;
         }
@@ -119,13 +120,27 @@ impl Room {
                 }
                 let i = (y * self.xsize + x) as usize;
                 if self.board[i] == 0 {
-                    self.board[i] = tiletype;
+                    self.board[i] = -2;
                     xmin = if x < xmin {x} else {xmin};
                     xmax = if x > xmax {x} else {xmax};
                     ymin = if y < ymin {y} else {ymin};
                     ymax = if y > ymax {y} else {ymax};
                     break;
+                } else if self.board[i] != -2 {
+                    break;
                 }
+            }
+        }
+    }
+    fn place_hazard(&mut self, xsize: i32, ysize: i32, rng: &mut ThreadRng) {
+        /* Places a rectangualar obstacle of a specified size */
+        let xmin = rng.gen_range(0..self.xsize);
+        let ymin = rng.gen_range(0..self.ysize);
+        let xmax = if xmin + xsize < self.xsize {xmin + xsize} else {self.xsize};
+        let ymax = if ymin + ysize < self.ysize {ymin + ysize} else {self.ysize};
+        for x in xmin..xmax {
+            for y in ymin..ymax {
+                self.board[(y * self.xsize + x) as usize] = -3;
             }
         }
     }
