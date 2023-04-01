@@ -269,7 +269,7 @@ impl Room {
                 let (xscr, yscr) = ((2 * x + 1) as u16, (y + 1) as u16);
                 queue!(stdout, cursor::MoveTo(xscr, yscr))?;
                 if suction_range.contains(&(x, y)) {
-                    queue!(stdout, SetBackgroundColor(Color::AnsiValue(237)))?;
+                    queue!(stdout, SetBackgroundColor(Color::AnsiValue(236)))?;
                 }
                 match &self.board[i] {
                     -3 => { queue!(stdout, SetForegroundColor(Color::Red), Print("!!"))?; }
@@ -301,7 +301,7 @@ impl Room {
                        cursor::MoveTo(xorig - 2, yorig),
                        Print("|      |"),
                        cursor::MoveTo(xorig - 2, yorig + 1),
-                       Print("|      |"),
+                       Print("| ╖  ╓ |"),
                        cursor::MoveTo(xorig - 1, yorig + 2),
                        Print("`----'"))?;
             }
@@ -311,9 +311,9 @@ impl Room {
                        cursor::MoveTo(xorig - 1, yorig - 1),
                        Print(".----"),
                        cursor::MoveTo(xorig - 2, yorig),
-                       Print("|      #"),
+                       Print("| ╛    #"),
                        cursor::MoveTo(xorig - 2, yorig + 1),
-                       Print("|      #"),
+                       Print("| ╕    #"),
                        cursor::MoveTo(xorig - 1, yorig + 2),
                        Print("`----"))?;
             }
@@ -323,7 +323,7 @@ impl Room {
                        cursor::MoveTo(xorig - 1, yorig - 1),
                        Print(",----."),
                        cursor::MoveTo(xorig - 2, yorig),
-                       Print("|      |"),
+                       Print("| ╜  ╙ |"),
                        cursor::MoveTo(xorig - 2, yorig + 1),
                        Print("|      |"),
                        cursor::MoveTo(xorig, yorig + 2),
@@ -335,9 +335,9 @@ impl Room {
                        cursor::MoveTo(xorig, yorig - 1),
                        Print("----,"),
                        cursor::MoveTo(xorig - 2, yorig),
-                       Print("#      |"),
+                       Print("#    ╘ |"),
                        cursor::MoveTo(xorig - 2, yorig + 1),
-                       Print("#      |"),
+                       Print("#    ╒ |"),
                        cursor::MoveTo(xorig, yorig + 2),
                        Print("----'"))?;
             }
