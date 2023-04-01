@@ -29,6 +29,8 @@ fn main() {
         let a = match read {
             Event::Key(event::KeyEvent{code: event::KeyCode::Up, ..})
                 => Action::FORWARD,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Down, ..})
+                => Action::REVERSE,
             Event::Key(event::KeyEvent{code: event::KeyCode::Left, ..})
                 => Action::L,
             Event::Key(event::KeyEvent{code: event::KeyCode::Right, ..})

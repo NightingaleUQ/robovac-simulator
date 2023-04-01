@@ -15,6 +15,7 @@ use std::io::{
 #[derive(PartialEq)]
 pub enum Action {
     FORWARD,
+    REVERSE,
     L,
     R,
     SUCK,
@@ -196,6 +197,13 @@ impl Room {
                 3 => (self.x - 1, self.y,     self.dirn),
                 _ => (self.x,     self.y,     self.dirn),
             },
+            Action::REVERSE => match self.dirn {
+                0 => (self.x,     self.y + 1, self.dirn),
+                1 => (self.x - 1, self.y,     self.dirn),
+                2 => (self.x,     self.y - 1, self.dirn),
+                3 => (self.x + 1, self.y,     self.dirn),
+                _ => (self.x,     self.y,     self.dirn),
+            },
             Action::L => (self.x, self.y, (self.dirn - 1) & 0x3),
             Action::R => (self.x, self.y, (self.dirn + 1) & 0x3),
             Action::SUCK => (self.x, self.y, self.dirn),
@@ -216,8 +224,14 @@ impl Room {
                 if penalty < 0.0 {
                     (nx, ny, ndirn) = (self.x, self.y, self.dirn);
                 }
-                /* Apply movement penalty for forward (-0.2) and rotation (-0.1) */
-                if a != Action::FORWARD { penalty -= 0.2 } else { penalty -= 0.1 };
+                /* Apply movement penalty for forward (-0.1), reverse (-2.0) and rotation (-0.2) */
+                if a == Action::FORWARD {
+                    penalty -= 0.1;
+                } else if a == Action::REVERSE {
+                    penalty -= 2.0;
+                } else {
+                    penalty -= 0.2;
+                }
                 penalty
             } else {
                 /* For every square covered by the vacuum, reduce dirt level by 1
@@ -372,8 +386,10 @@ impl Room {
             /* Information */
             queue!(stdout, cursor::MoveTo(0, (self.ysize + 2) as u16), Print("Score:"))?;
             queue!(stdout, cursor::MoveTo(0, (self.ysize + 4) as u16),
-                    SetForegroundColor(Color::Cyan), Print("Move forward"),
-                    ResetColor, Print(" : Up arrow | "),
+                    SetForegroundColor(Color::Cyan), Print("Forward"),
+                    ResetColor, Print(": Up arrow | "),
+                    SetForegroundColor(Color::Cyan), Print("Back"),
+                    ResetColor, Print(": Down arrow | "),
                     SetForegroundColor(Color::Cyan), Print("Turn CCW"),
                     ResetColor, Print(": Left arrow | "),
                     SetForegroundColor(Color::Cyan), Print("Turn CW"),
