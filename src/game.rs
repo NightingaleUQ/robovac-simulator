@@ -12,6 +12,7 @@ use std::io::{
     Write, stdout,
 };
 
+#[derive(PartialEq)]
 pub enum Action {
     FORWARD,
     L,
@@ -52,7 +53,7 @@ impl Room {
             }
         }
         /* Generate room contents */
-        for _ in 0..((xsize * ysize) / 1000) {
+        for _ in 0..((xsize * ysize) / 800) {
             room.place_hazard(rng.gen_range(4..12), rng.gen_range(4..12), &mut rng);
         }
         for _ in 0..((xsize * ysize) / 200) {
@@ -162,24 +163,65 @@ impl Room {
             _ => [(-1, -1), (-1, -1), (-1, -1), (-1, -1)],
         }
     }
+    fn get_occupied_squares(x: i32, y: i32, dirn: i32) -> [(i32, i32); 14] {
+        /* Given a (new) vaccuum position, return the squares that are covered by it. */
+        match dirn {
+            0 => [            (x, y-1), (x+1, y-1),
+                  (x-1,  y ), (x,  y ), (x+1,  y ), (x+2,  y ),
+                  (x-1, y+1), (x, y+1), (x+1, y+1), (x+2, y+1),
+                  (x-1, y+2), (x, y+2), (x+1, y+2), (x+2, y+2)],
+            1 => [(x-1, y-1), (x, y-1), (x+1, y-1),
+                  (x-1,  y ), (x,  y ), (x+1,  y ), (x+2,  y ),
+                  (x-1, y+1), (x, y+1), (x+1, y+1), (x+2, y+1),
+                  (x-1, y+2), (x, y+2), (x+1, y+2),           ],
+            2 => [(x-1, y-1), (x, y-1), (x+1, y-1), (x+2, y-1),
+                  (x-1,  y ), (x,  y ), (x+1,  y ), (x+2,  y ),
+                  (x-1, y+1), (x, y+1), (x+1, y+1), (x+2, y+1),
+                              (x, y+2), (x+1, y+2),           ],
+            3 => [            (x, y-1), (x+1, y-1), (x+2, y-1),
+                  (x-1,  y ), (x,  y ), (x+1,  y ), (x+2,  y ),
+                  (x-1, y+1), (x, y+1), (x+1, y+1), (x+2, y+1),
+                              (x, y+2), (x+1, y+2), (x+2, y+2)],
+            _ => [(-1, -1) ; 14],
+        }
+    }
     /* Returns the reward from taking an action */
     pub fn perform_action(&mut self, a: Action) -> f64 {
-        let r = match a {
-            Action::FORWARD => {
-                match self.dirn {
-                    0 => { self.y -= 1; }
-                    1 => { self.x += 1; }
-                    2 => { self.y += 1; }
-                    3 => { self.x -= 1; }
-                    _ => {}
-                };
-                -0.1
-            }
-            Action::L => { self.dirn = (self.dirn - 1) & 0x3; -0.2 }
-            Action::R => { self.dirn = (self.dirn + 1) & 0x3; -0.2 }
-            Action::SUCK => {
+        /* Calculate new positions */
+        let (mut nx, mut ny, mut ndirn) = match a {
+            Action::FORWARD => match self.dirn {
+                0 => (self.x,     self.y - 1, self.dirn),
+                1 => (self.x + 1, self.y,     self.dirn),
+                2 => (self.x,     self.y + 1, self.dirn),
+                3 => (self.x - 1, self.y,     self.dirn),
+                _ => (self.x,     self.y,     self.dirn),
+            },
+            Action::L => (self.x, self.y, (self.dirn - 1) & 0x3),
+            Action::R => (self.x, self.y, (self.dirn + 1) & 0x3),
+            Action::SUCK => (self.x, self.y, self.dirn),
+        };
+        let r =
+            if a != Action::SUCK {
+                /* Check for collisions with obstacles and hazards */
+                let mut penalty = 0.0;
+                for (x, y) in Room::get_occupied_squares(nx, ny, ndirn) {
+                    if x >= 0 && x < self.xsize && y >= 0 && y < self.ysize {
+                        let v = self.board[(y * self.xsize + x) as usize];
+                        penalty = if v == -2 && penalty > -20.0 { -20.0 } else { penalty };
+                        penalty = if v == -3 && penalty > -50.0 { -50.0 } else { penalty };
+                    } else {
+                        penalty = if penalty > -20.0 { -20.0 } else { penalty };
+                    }
+                }
+                if penalty < 0.0 {
+                    (nx, ny, ndirn) = (self.x, self.y, self.dirn);
+                }
+                /* Apply movement penalty for forward (-0.2) and rotation (-0.1) */
+                if a != Action::FORWARD { penalty -= 0.2 } else { penalty -= 0.1 };
+                penalty
+            } else {
                 /* For every square covered by the vacuum, reduce dirt level by 1
-                 * Reward 1 for each dirt removed this way, minus a constant -0.2 */
+                 * Reward 1 for each dirt removed this way, minus a constant -0.1 */
                 self.get_suction_range().iter().filter(|(x, y)| {
                     if *x >= 0 && *x < self.xsize && *y >= 0 && *y < self.ysize
                         && self.board[(y * self.xsize + x) as usize] > 0 {
@@ -188,9 +230,13 @@ impl Room {
                     } else {
                         false
                     }
-                }).collect::<Vec<&(i32, i32)>>().len() as f64 * 1.0 - 0.2
+                }).collect::<Vec<&(i32, i32)>>().len() as f64 * 1.0 - 0.1
             }
-        };
+        ;
+
+        /* Apply movement */
+        (self.x, self.y, self.dirn) = (nx, ny, ndirn);
+
         self.r += r;
         r
     }
@@ -328,9 +374,9 @@ impl Room {
             queue!(stdout, cursor::MoveTo(0, (self.ysize + 4) as u16),
                     SetForegroundColor(Color::Cyan), Print("Move forward"),
                     ResetColor, Print(" : Up arrow | "),
-                    SetForegroundColor(Color::Cyan), Print("Turn anticlockwise"),
+                    SetForegroundColor(Color::Cyan), Print("Turn CCW"),
                     ResetColor, Print(": Left arrow | "),
-                    SetForegroundColor(Color::Cyan), Print("Turn clockwise"),
+                    SetForegroundColor(Color::Cyan), Print("Turn CW"),
                     ResetColor, Print(": Right arrow"),
                     cursor::MoveTo(0, (self.ysize + 5) as u16),
                     SetForegroundColor(Color::Cyan), Print("Suck"), ResetColor,
