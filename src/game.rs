@@ -44,26 +44,30 @@ pub struct Room {
 
 impl Room {
     pub fn new(xsize: i32, ysize: i32) -> Room {
-        let mut rng = rand::thread_rng();
         let board: Vec<i32> = vec![0; (xsize * ysize) as usize];
         let mut room = Room{xsize, ysize, board, x: 1, y: ysize - 3, dirn: 0, r: 0.0};
+        room.generate_level();
+        room
+    }
+    fn generate_level(&mut self) {
+        let mut rng = rand::thread_rng();
+        self.board.iter_mut().for_each(|x| *x = 0);
         /* Charging station */
         for x in 0..4 {
             for y in 0..4 {
-                room.board[(((ysize - 4 + y) * xsize) + x) as usize] = -1;
+                self.board[(((self.ysize - 4 + y) * self.xsize) + x) as usize] = -1;
             }
         }
         /* Generate room contents */
-        for _ in 0..((xsize * ysize) / 800) {
-            room.place_hazard(rng.gen_range(4..12), rng.gen_range(4..12), &mut rng);
+        for _ in 0..((self.xsize * self.ysize) / 800) {
+            self.place_hazard(rng.gen_range(4..12), rng.gen_range(4..12), &mut rng);
         }
-        for _ in 0..((xsize * ysize) / 200) {
-            room.place_obstacle(rng.gen_range(4..12), &mut rng);
+        for _ in 0..((self.xsize * self.ysize) / 200) {
+            self.place_obstacle(rng.gen_range(4..12), &mut rng);
         }
-        for _ in 0..((xsize * ysize) / 10) {
-            room.place_dirt(&mut rng);
+        for _ in 0..((self.xsize * self.ysize) / 10) {
+            self.place_dirt(&mut rng);
         }
-        room
     }
     fn place_dirt(&mut self, rng: &mut ThreadRng) {
         let x = rng.gen_range(0..self.xsize);
@@ -234,17 +238,23 @@ impl Room {
                 }
                 penalty
             } else {
-                /* For every square covered by the vacuum, reduce dirt level by 1
-                 * Reward 1 for each dirt removed this way, minus a constant -0.1 */
-                self.get_suction_range().iter().filter(|(x, y)| {
-                    if *x >= 0 && *x < self.xsize && *y >= 0 && *y < self.ysize
-                        && self.board[(y * self.xsize + x) as usize] > 0 {
-                        self.board[(y * self.xsize + x) as usize] -= 1;
-                        true
-                    } else {
-                        false
-                    }
-                }).collect::<Vec<&(i32, i32)>>().len() as f64 * 1.0 - 0.1
+                if self.x == 1 && self.y == self.ysize - 3 {
+                    /* Robot is on charging pad, start a new level */
+                    self.generate_level();
+                    -0.2
+                } else {
+                    /* For every square covered by the vacuum, reduce dirt level by 1
+                     * Reward 1 for each dirt removed this way, minus a constant -0.1 */
+                    self.get_suction_range().iter().filter(|(x, y)| {
+                        if *x >= 0 && *x < self.xsize && *y >= 0 && *y < self.ysize
+                            && self.board[(y * self.xsize + x) as usize] > 0 {
+                            self.board[(y * self.xsize + x) as usize] -= 1;
+                            true
+                        } else {
+                            false
+                        }
+                    }).collect::<Vec<&(i32, i32)>>().len() as f64 * 1.0 - 0.1
+                }
             }
         ;
 
@@ -255,6 +265,9 @@ impl Room {
         r
     }
     pub fn draw(&self, first_time: bool) -> Result<()> {
+        /* If we're on the charging pad, it could be a new level */
+        let redraw_map = self.x == 1 && self.y == self.ysize - 3;
+
         let mut stdout = stdout();
         let draw_xmin;
         let draw_xmax;
@@ -262,6 +275,8 @@ impl Room {
         let draw_ymax;
         if first_time {
             queue!(stdout, terminal::Clear(terminal::ClearType::All))?;
+        }
+        if first_time || redraw_map {
             draw_xmin = 0;
             draw_xmax = self.xsize;
             draw_ymin = 0;

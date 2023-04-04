@@ -47,4 +47,5 @@ fn main() {
         _ = room.draw(false);
     }
     _ = stdout().execute(terminal::Clear(terminal::ClearType::All));
+    _ = stdout().execute(cursor::Show);
 }
