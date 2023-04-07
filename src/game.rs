@@ -305,7 +305,7 @@ impl Room {
                     }
                 }
                 400 => (self.x - 1) as f32,
-                401 => (self.ysize - self.y + 3) as f32,
+                401 => (self.ysize - self.y - 3) as f32,
                 402 => self.dirn as f32,
                 _   => 0.0, /* Should not occur */
             }
