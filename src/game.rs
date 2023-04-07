@@ -21,6 +21,27 @@ pub enum Action {
     SUCK,
 }
 
+pub fn act_to_i(a: Action) -> usize {
+    match a {
+        Action::FORWARD => 0,
+        Action::REVERSE => 1,
+        Action::L       => 2,
+        Action::R       => 3,
+        Action::SUCK    => 4,
+    }
+}
+
+pub fn i_to_act(i: usize) -> Action {
+    match i {
+        0 => Action::FORWARD,
+        1 => Action::REVERSE,
+        2 => Action::L,
+        3 => Action::R,
+        4 => Action::SUCK,
+        _ => Action::FORWARD,
+    }
+}
+
 pub struct Room {
     /* Game board, stored in an array (xsize * ysize) in length 
      * >0: Amount of dirt on space
@@ -39,8 +60,10 @@ pub struct Room {
     dirn: i32, /* 0: UP, 1: RIGHT, 2: DOWN, 3: LEFT */
 
     /* Cumulative reward */
-    r: f64,
+    r: f32,
 }
+
+pub type RoomVec = [f32; 403];
 
 impl Room {
     pub fn new(xsize: i32, ysize: i32) -> Room {
@@ -191,7 +214,7 @@ impl Room {
         }
     }
     /* Returns the reward from taking an action */
-    pub fn perform_action(&mut self, a: Action) -> f64 {
+    pub fn perform_action(&mut self, a: Action) -> f32 {
         /* Calculate new positions */
         let (mut nx, mut ny, mut ndirn) = match a {
             Action::FORWARD => match self.dirn {
@@ -253,7 +276,7 @@ impl Room {
                         } else {
                             false
                         }
-                    }).collect::<Vec<&(i32, i32)>>().len() as f64 * 1.0 - 0.1
+                    }).collect::<Vec<&(i32, i32)>>().len() as f32 * 1.0 - 0.1
                 }
             }
         ;
@@ -263,6 +286,33 @@ impl Room {
 
         self.r += r;
         r
+    }
+    pub fn get_nn_input(&self) -> RoomVec {
+        /* Returns an input vector (len = 403) for a neural network:
+         * - Values for a 20 x 20 space around the robot
+         * - Coordinates (x, y) of the robot, relative to the charging pad
+         * - Direction in which the robot is facing */
+        std::array::from_fn(|i| {
+            match i {
+                0..=399 => {
+                    let (x, y): (i32, i32) = (i as i32 % 20, i as i32 / 20);
+                    let (x, y): (i32, i32) = (self.x + x - 9, self.y + y - 9);
+                    if x >= 0 && x < self.xsize && y >= 0 && y < self.ysize {
+                        self.board[(y * self.xsize + x) as usize] as f32
+                    } else {
+                        /* Out of bounds, return an obstacle */
+                        -2.0
+                    }
+                }
+                400 => (self.x - 1) as f32,
+                401 => (self.y - self.ysize + 3) as f32,
+                402 => self.dirn as f32,
+                _   => 0.0, /* Should not occur */
+            }
+        })
+    }
+    pub fn get_total_reward(&self) -> f32 {
+        self.r
     }
     pub fn draw(&self, first_time: bool) -> Result<()> {
         /* If we're on the charging pad, it could be a new level */
