@@ -13,11 +13,11 @@ use crossterm::{
 };
 
 use tch::{
-    nn, nn::Module, nn::OptimizerConfig, nn::LinearConfig, Device, index, Tensor, IndexOp, Reduction
+    nn, nn::Module, nn::OptimizerConfig, Device, Tensor, Reduction
 };
 
 use rand::{
-    seq::IteratorRandom, thread_rng, Rng
+    seq::IteratorRandom, Rng
 };
 
 use game::{
@@ -67,10 +67,6 @@ fn main() {
         let mut rmem = Vec::<SARS>::with_capacity(NUM_EPISODES * EPISODE_LEN);
         for ep in 0..NUM_EPISODES {
             let mut room = Room::new(w, h);
-            let temp = room.get_nn_input();
-            for chunk in temp.chunks(20).into_iter() {
-                println!("{:?}", chunk);
-            }
             for _ in 0..EPISODE_LEN {
                 let s = room.get_nn_input();
                 /* Epsilon-greedy action selection */
@@ -88,6 +84,7 @@ fn main() {
                     }
                     argmax
                 };
+                print!("{} ", a);
                 let r = room.perform_action(game::i_to_act(a));
                 let s_next = room.get_nn_input();
                 rmem.push(SARS{s, a, r, s_next});
@@ -113,7 +110,7 @@ fn main() {
                         }
                         max
                     }).collect::<Vec<f32>>();
-                    let model_r: Tensor = Tensor::of_slice(&r) + 0.9 * Tensor::of_slice(&max_next);
+                    let model_r: Tensor = Tensor::of_slice(&r) + 0.98 * Tensor::of_slice(&max_next);
                     /* Modified forward tensor with expected reward values */
                     let mut y: Vec<f32> = Vec::from(&fwd);
                     for (i, chunk) in y.chunks_mut(5).into_iter().enumerate() {
@@ -123,6 +120,11 @@ fn main() {
                     let loss = fwd.mse_loss(&y, Reduction::Sum).set_requires_grad(false);
                     opt.backward_step(&loss);
                 }
+            }
+            println!("");
+            let temp = room.get_nn_input();
+            for chunk in temp.chunks(20).into_iter() {
+                println!("{:4?}", chunk);
             }
             println!("Episode {:3} Reward: {:7.1}", ep, room.get_total_reward());
         }

@@ -253,11 +253,11 @@ impl Room {
                 }
                 /* Apply movement penalty for forward (-0.1), reverse (-2.0) and rotation (-0.2) */
                 if a == Action::FORWARD {
-                    penalty -= 0.1;
+                    penalty -= 0.05;
                 } else if a == Action::REVERSE {
-                    penalty -= 2.0;
+                    penalty -= 1.0;
                 } else {
-                    penalty -= 0.2;
+                    penalty -= 0.1;
                 }
                 penalty
             } else {
