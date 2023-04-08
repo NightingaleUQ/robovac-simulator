@@ -13,23 +13,22 @@ use crossterm::{
 };
 
 use tch::{
-    nn, nn::Module, nn::OptimizerConfig, Device, Tensor, Reduction
+    nn, nn::Sequential, nn::Module, nn::OptimizerConfig,
+    Device, Tensor, Reduction
 };
 
-use rand::{
-    seq::IteratorRandom, Rng
-};
+use rand::Rng;
 
 use game::{
-    Room, Action, RoomVec
+    Room, RoomVec
 };
 
-const NUM_EPISODES: usize = 1024;
+const NUM_EPISODES: usize = 16;
 const EPISODE_LEN: usize = 512;
 const BATCH_SIZE: usize = 256;
 
 /* Structure of our network */
-fn net(vs: &nn::Path) -> impl Module {
+fn net(vs: &nn::Path) -> Sequential {
     nn::seq()
         .add(nn::linear(vs / "layer1", game::SIZE_STATE as i64, 256, Default::default()))
         .add_fn(|x| x.sigmoid())
@@ -53,12 +52,17 @@ fn main() {
     let (w, h): (i32, i32) = (((termw - 2) / 2) as i32, (termh - 8) as i32);
 
     let args: Vec<String> = env::args().collect();
+    
+    /* Neural network parameters */
+    let dev = Device::cuda_if_available();
+    let vs = nn::VarStore::new(dev);
+    let net = net(&vs.root());
+
+    let get_action_fn: fn (net: &Sequential, s: &RoomVec) -> isize;
+
     if args.len() >= 2 && String::from("demo") == args[1] {
         /* Neural network demo mode */
         println!("Initialisaing training...");
-        let dev = Device::cuda_if_available();
-        let vs = nn::VarStore::new(dev);
-        let net = net(&vs.root());
         let mut opt = nn::Adam::default().build(&vs, 1e-3).expect("Failed to build optimiser");
         let mut rng = rand::thread_rng();
         println!("CUDA available? {}", dev.is_cuda());
@@ -73,16 +77,7 @@ fn main() {
                 let a = if rng.gen::<f32>() < 0.1 {
                     rng.gen_range(0..game::SIZE_ACTION)
                 } else {
-                    let mut max = std::f32::MIN;
-                    let mut argmax = 0;
-                    let out = Vec::from(net.forward(&Tensor::of_slice(&s)));
-                    for (i, v) in out.iter().enumerate() {
-                        if *v > max {
-                            max = *v;
-                            argmax = i;
-                        }
-                    }
-                    argmax
+                    get_nn_best_action(&net, &s)
                 };
                 print!("{} ", a);
                 let r = room.perform_action(game::i_to_act(a));
@@ -111,7 +106,7 @@ fn main() {
                         }
                         max
                     }).collect::<Vec<f32>>();
-                    let model_r: Tensor = Tensor::of_slice(&r) + 0.98 * Tensor::of_slice(&max_next);
+                    let model_r: Tensor = Tensor::of_slice(&r) + 0.999 * Tensor::of_slice(&max_next);
                     /* Modified forward tensor with expected reward values */
                     let mut y: Vec<f32> = Vec::from(&fwd);
                     for (i, chunk) in y.chunks_mut(game::SIZE_ACTION).into_iter().enumerate() {
@@ -129,36 +124,68 @@ fn main() {
             }
             println!("Episode {:3} Reward: {:7.1}", ep, room.get_total_reward());
         }
+        get_action_fn = get_action_nn;
     } else {
-        terminal::enable_raw_mode().expect("Failed to enable RAW mode.");
-        _ = stdout().execute(cursor::Hide);
+        get_action_fn = get_action_user;
+    }
 
-        /* Interactive player mode */
-        let mut room = Room::new(w, h);
-        _ = room.draw(true);
+    /* Gameplay loop */
 
-        loop {
-            let read = event::read().unwrap();
-            let a = match read {
-                Event::Key(event::KeyEvent{code: event::KeyCode::Up, ..})
-                    => Action::FORWARD,
-                Event::Key(event::KeyEvent{code: event::KeyCode::Down, ..})
-                    => Action::REVERSE,
-                Event::Key(event::KeyEvent{code: event::KeyCode::Left, ..})
-                    => Action::L,
-                Event::Key(event::KeyEvent{code: event::KeyCode::Right, ..})
-                    => Action::R,
-                Event::Key(event::KeyEvent{code: event::KeyCode::Char(' '), ..})
-                    => Action::SUCK,
-                Event::Key(event::KeyEvent{code: event::KeyCode::Esc, ..}) |
-                Event::Key(event::KeyEvent{code: event::KeyCode::Char('q'), ..})
-                    => { break; }
-                _
-                    => { continue; }
-            };
-            room.perform_action(a);
-            _ = room.draw(false);
-        }}
+    terminal::enable_raw_mode().expect("Failed to enable RAW mode.");
+    _ = stdout().execute(cursor::Hide);
+
+    /* Interactive player mode */
+    let mut room = Room::new(w, h);
+    _ = room.draw(true);
+
+    loop {
+        let a: isize = get_action_fn(&net, &room.get_nn_input());
+        if a == -1 {
+            break;
+        }
+        room.perform_action(game::i_to_act(a as usize));
+        _ = room.draw(false);
+    }
     _ = stdout().execute(terminal::Clear(terminal::ClearType::All));
     _ = stdout().execute(cursor::Show);
+}
+
+fn get_nn_best_action(net: &Sequential, s: &RoomVec) -> usize {
+    let mut max = std::f32::MIN;
+    let mut argmax = 0;
+    let out = Vec::from(net.forward(&Tensor::of_slice(s)));
+    for (i, v) in out.iter().enumerate() {
+        if *v > max {
+            max = *v;
+            argmax = i;
+        }
+    }
+    argmax
+}
+
+fn get_action_nn(net: &Sequential, s: &RoomVec) -> isize {
+    get_nn_best_action(net, s) as isize
+}
+
+fn get_action_user(_net: &Sequential, _s: &RoomVec) -> isize {
+    let read = event::read().unwrap();
+    loop {
+        match read {
+            Event::Key(event::KeyEvent{code: event::KeyCode::Up, ..})
+                => return 0,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Down, ..})
+                => return 1,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Left, ..})
+                => return 2,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Right, ..})
+                => return 3,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Char(' '), ..})
+                => return 4,
+            Event::Key(event::KeyEvent{code: event::KeyCode::Esc, ..}) |
+            Event::Key(event::KeyEvent{code: event::KeyCode::Char('q'), ..})
+                => return -1, 
+            _
+                => { continue; }
+        }
+    }
 }

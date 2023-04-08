@@ -21,16 +21,6 @@ pub enum Action {
     SUCK,
 }
 
-pub fn act_to_i(a: Action) -> usize {
-    match a {
-        Action::FORWARD => 0,
-        Action::REVERSE => 1,
-        Action::L       => 2,
-        Action::R       => 3,
-        Action::SUCK    => 4,
-    }
-}
-
 pub fn i_to_act(i: usize) -> Action {
     match i {
         0 => Action::FORWARD,
