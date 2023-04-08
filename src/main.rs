@@ -23,19 +23,21 @@ use game::{
     Room, RoomVec
 };
 
-const NUM_EPISODES: usize = 16;
-const EPISODE_LEN: usize = 512;
+const NUM_EPISODES: usize = 32;
+const EPISODE_LEN: usize = 1024;
 const BATCH_SIZE: usize = 256;
 
 /* Structure of our network */
 fn net(vs: &nn::Path) -> Sequential {
     nn::seq()
-        .add(nn::linear(vs / "layer1", game::SIZE_STATE as i64, 256, Default::default()))
-        .add_fn(|x| x.sigmoid())
-        .add(nn::linear(vs / "layer2", 256, 128, Default::default()))
-        .add_fn(|x| x.sigmoid())
-        .add(nn::linear(vs / "layer3", 128, 64, Default::default()))
-        .add_fn(|x| x.sigmoid())
+        .add(nn::linear(vs, game::SIZE_STATE as i64, 256, Default::default()))
+        .add_fn(|x| x.relu())
+        .add(nn::linear(vs, 256, 128, Default::default()))
+        .add_fn(|x| x.relu())
+        .add(nn::linear(vs, 128, 128, Default::default()))
+        .add_fn(|x| x.relu())
+        .add(nn::linear(vs, 128, 64, Default::default()))
+        .add_fn(|x| x.relu())
         .add(nn::linear(vs, 64, game::SIZE_ACTION as i64, Default::default()))
 }
 
@@ -58,7 +60,11 @@ fn main() {
     let vs = nn::VarStore::new(dev);
     let net = net(&vs.root());
 
-    let get_action_fn: fn (net: &Sequential, s: &RoomVec) -> isize;
+    /* Mode of control
+     * 0: User input mode
+     * 1: Neural network input "demo" mode
+     */
+    let input_mode;
 
     if args.len() >= 2 && String::from("demo") == args[1] {
         /* Neural network demo mode */
@@ -74,7 +80,7 @@ fn main() {
             for _ in 0..EPISODE_LEN {
                 let s = room.get_nn_input();
                 /* Epsilon-greedy action selection */
-                let a = if rng.gen::<f32>() < 0.1 {
+                let a = if rng.gen::<f32>() < 0.6 {
                     rng.gen_range(0..game::SIZE_ACTION)
                 } else {
                     get_nn_best_action(&net, &s)
@@ -113,7 +119,7 @@ fn main() {
                         chunk[a[i]] = Vec::from(&model_r)[i];
                     }
                     let y = Tensor::of_slice(&y).view((BATCH_SIZE as i64, game::SIZE_ACTION as i64));
-                    let loss = fwd.mse_loss(&y, Reduction::Sum).set_requires_grad(false);
+                    let loss = fwd.mse_loss(&y, Reduction::Sum);
                     opt.backward_step(&loss);
                 }
             }
@@ -122,24 +128,30 @@ fn main() {
             for chunk in temp.chunks(20).into_iter() {
                 println!("{:2.0?}", chunk);
             }
-            println!("Episode {:3} Reward: {:7.1}", ep, room.get_total_reward());
+            println!("Episode {:3} (of {}) Reward: {:7.1}", ep + 1, NUM_EPISODES, room.get_total_reward());
         }
-        get_action_fn = get_action_nn;
+        input_mode = 1;
     } else {
-        get_action_fn = get_action_user;
+        input_mode = 0;
     }
 
     /* Gameplay loop */
 
-    terminal::enable_raw_mode().expect("Failed to enable RAW mode.");
+    if input_mode == 0 {
+        terminal::enable_raw_mode().expect("Failed to enable RAW mode.");
+    }
     _ = stdout().execute(cursor::Hide);
 
-    /* Interactive player mode */
     let mut room = Room::new(w, h);
     _ = room.draw(true);
 
     loop {
-        let a: isize = get_action_fn(&net, &room.get_nn_input());
+        let a: isize =
+            if input_mode == 0 {
+                get_action_user()
+            } else {
+                get_action_nn(&net, &room.get_nn_input())
+            };
         if a == -1 {
             break;
         }
@@ -164,10 +176,16 @@ fn get_nn_best_action(net: &Sequential, s: &RoomVec) -> usize {
 }
 
 fn get_action_nn(net: &Sequential, s: &RoomVec) -> isize {
-    get_nn_best_action(net, s) as isize
+    /* Epsilon-greedy action selection */
+    let mut rng = rand::thread_rng();
+    if rng.gen::<f32>() < 0.05 {
+        rng.gen_range(0..game::SIZE_ACTION) as isize
+    } else {
+        get_nn_best_action(net, s) as isize
+    }
 }
 
-fn get_action_user(_net: &Sequential, _s: &RoomVec) -> isize {
+fn get_action_user() -> isize {
     let read = event::read().unwrap();
     loop {
         match read {
