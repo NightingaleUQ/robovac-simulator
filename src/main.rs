@@ -31,13 +31,13 @@ const BATCH_SIZE: usize = 256;
 /* Structure of our network */
 fn net(vs: &nn::Path) -> impl Module {
     nn::seq()
-        .add(nn::linear(vs / "layer1", 403, 256, Default::default()))
+        .add(nn::linear(vs / "layer1", game::SIZE_STATE as i64, 256, Default::default()))
         .add_fn(|x| x.sigmoid())
         .add(nn::linear(vs / "layer2", 256, 128, Default::default()))
         .add_fn(|x| x.sigmoid())
         .add(nn::linear(vs / "layer3", 128, 64, Default::default()))
         .add_fn(|x| x.sigmoid())
-        .add(nn::linear(vs, 64, 5, Default::default()))
+        .add(nn::linear(vs, 64, game::SIZE_ACTION as i64, Default::default()))
 }
 
 struct SARS {
@@ -71,7 +71,7 @@ fn main() {
                 let s = room.get_nn_input();
                 /* Epsilon-greedy action selection */
                 let a = if rng.gen::<f32>() < 0.1 {
-                    rng.gen_range(0..5)
+                    rng.gen_range(0..game::SIZE_ACTION)
                 } else {
                     let mut max = std::f32::MIN;
                     let mut argmax = 0;
@@ -90,20 +90,21 @@ fn main() {
                 rmem.push(SARS{s, a, r, s_next});
                 if rmem.len() >= BATCH_SIZE {
                     /* Sample from memory and learn */
-                    let sample = rmem.iter().choose_multiple(&mut rng, BATCH_SIZE);
-                    let mut s = Vec::with_capacity(403 * BATCH_SIZE);
+                    let sample = rand::seq::index::sample(&mut rng, rmem.len(), BATCH_SIZE)
+                        .iter().map(|i| &rmem[i]).collect::<Vec<&SARS>>();
+                    let mut s = Vec::with_capacity(game::SIZE_STATE * BATCH_SIZE);
                     let mut a = Vec::with_capacity(BATCH_SIZE);
                     let mut r = Vec::with_capacity(BATCH_SIZE);
-                    let mut s_next = Vec::with_capacity(BATCH_SIZE);
+                    let mut s_next = Vec::with_capacity(game::SIZE_STATE * BATCH_SIZE);
                     for sars in sample {
                         s.extend(sars.s);
                         a.push(sars.a);
                         r.push(sars.r);
                         s_next.extend(sars.s_next);
                     }
-                    let fwd = net.forward(&Tensor::of_slice(&s).view((BATCH_SIZE as i64, 403)));
-                    let q_next = net.forward(&Tensor::of_slice(&s_next).view((BATCH_SIZE as i64, 403)));
-                    let max_next = Vec::from(q_next).chunks(5).into_iter().map(|slice| {
+                    let fwd = net.forward(&Tensor::of_slice(&s).view((BATCH_SIZE as i64, game::SIZE_STATE as i64)));
+                    let q_next = net.forward(&Tensor::of_slice(&s_next).view((BATCH_SIZE as i64, game::SIZE_STATE as i64)));
+                    let max_next = Vec::from(q_next).chunks(game::SIZE_ACTION).into_iter().map(|slice| {
                         let mut max = std::f32::MIN;
                         for val in slice.iter() {
                             max = if *val > max {*val} else {max}
@@ -113,10 +114,10 @@ fn main() {
                     let model_r: Tensor = Tensor::of_slice(&r) + 0.98 * Tensor::of_slice(&max_next);
                     /* Modified forward tensor with expected reward values */
                     let mut y: Vec<f32> = Vec::from(&fwd);
-                    for (i, chunk) in y.chunks_mut(5).into_iter().enumerate() {
+                    for (i, chunk) in y.chunks_mut(game::SIZE_ACTION).into_iter().enumerate() {
                         chunk[a[i]] = Vec::from(&model_r)[i];
                     }
-                    let y = Tensor::of_slice(&y).view((BATCH_SIZE as i64, 5));
+                    let y = Tensor::of_slice(&y).view((BATCH_SIZE as i64, game::SIZE_ACTION as i64));
                     let loss = fwd.mse_loss(&y, Reduction::Sum).set_requires_grad(false);
                     opt.backward_step(&loss);
                 }
@@ -124,7 +125,7 @@ fn main() {
             println!("");
             let temp = room.get_nn_input();
             for chunk in temp.chunks(20).into_iter() {
-                println!("{:4?}", chunk);
+                println!("{:2.0?}", chunk);
             }
             println!("Episode {:3} Reward: {:7.1}", ep, room.get_total_reward());
         }
