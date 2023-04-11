@@ -118,6 +118,7 @@ fn main() {
                     }
                     let y = Tensor::of_slice(&y).view((BATCH_SIZE as i64, 5));
                     let loss = fwd.mse_loss(&y, Reduction::Sum).set_requires_grad(false);
+                    print!("({}) ", Vec::from(&loss).iter().sum::<f32>()); /* Av. loss */
                     opt.backward_step(&loss);
                 }
             }
