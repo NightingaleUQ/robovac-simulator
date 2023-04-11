@@ -21,16 +21,6 @@ pub enum Action {
     SUCK,
 }
 
-pub fn act_to_i(a: Action) -> usize {
-    match a {
-        Action::FORWARD => 0,
-        Action::REVERSE => 1,
-        Action::L       => 2,
-        Action::R       => 3,
-        Action::SUCK    => 4,
-    }
-}
-
 pub fn i_to_act(i: usize) -> Action {
     match i {
         0 => Action::FORWARD,
@@ -63,7 +53,9 @@ pub struct Room {
     r: f32,
 }
 
-pub type RoomVec = [f32; 403];
+pub const SIZE_STATE: usize = 403;
+pub const SIZE_ACTION: usize = 5;
+pub type RoomVec = [f32; SIZE_STATE as usize];
 
 impl Room {
     pub fn new(xsize: i32, ysize: i32) -> Room {
@@ -288,7 +280,7 @@ impl Room {
         r
     }
     pub fn get_nn_input(&self) -> RoomVec {
-        /* Returns an input vector (len = 403) for a neural network:
+        /* Returns an input vector (len = SIZE_STATE = 403) for a neural network:
          * - Values for a 20 x 20 space around the robot
          * - Coordinates (x, y) of the robot, relative to the charging pad
          * - Direction in which the robot is facing */
