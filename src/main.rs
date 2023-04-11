@@ -23,7 +23,7 @@ use game::{
     Room, RoomVec
 };
 
-const NUM_EPISODES: usize = 32;
+const NUM_EPISODES: usize = 1024;
 const EPISODE_LEN: usize = 1024;
 const BATCH_SIZE: usize = 256;
 
@@ -69,7 +69,7 @@ fn main() {
     if args.len() >= 2 && String::from("demo") == args[1] {
         /* Neural network demo mode */
         println!("Initialisaing training...");
-        let mut opt = nn::Adam::default().build(&vs, 1e-3).expect("Failed to build optimiser");
+        let mut opt = nn::Adam::default().build(&vs, 3e-4).expect("Failed to build optimiser");
         let mut rng = rand::thread_rng();
         println!("CUDA available? {}", dev.is_cuda());
 
@@ -80,7 +80,7 @@ fn main() {
             for _ in 0..EPISODE_LEN {
                 let s = room.get_nn_input();
                 /* Epsilon-greedy action selection */
-                let a = if rng.gen::<f32>() < 0.6 {
+                let a = if rng.gen::<f32>() < 0.2 {
                     rng.gen_range(0..game::SIZE_ACTION)
                 } else {
                     get_nn_best_action(&net, &s)
@@ -103,8 +103,8 @@ fn main() {
                         r.push(sars.r);
                         s_next.extend(sars.s_next);
                     }
-                    let fwd = net.forward(&Tensor::of_slice(&s).view((BATCH_SIZE as i64, game::SIZE_STATE as i64)));
                     let q_next = net.forward(&Tensor::of_slice(&s_next).view((BATCH_SIZE as i64, game::SIZE_STATE as i64)));
+                    let fwd = net.forward(&Tensor::of_slice(&s).view((BATCH_SIZE as i64, game::SIZE_STATE as i64)));
                     let max_next = Vec::from(q_next).chunks(game::SIZE_ACTION).into_iter().map(|slice| {
                         let mut max = std::f32::MIN;
                         for val in slice.iter() {
@@ -112,15 +112,15 @@ fn main() {
                         }
                         max
                     }).collect::<Vec<f32>>();
-                    let model_r: Tensor = Tensor::of_slice(&r) + 0.999 * Tensor::of_slice(&max_next);
+                    let model_r: Tensor = Tensor::of_slice(&r) + 0.95 * Tensor::of_slice(&max_next);
                     /* Modified forward tensor with expected reward values */
                     let mut y: Vec<f32> = Vec::from(&fwd);
                     for (i, chunk) in y.chunks_mut(game::SIZE_ACTION).into_iter().enumerate() {
                         chunk[a[i]] = Vec::from(&model_r)[i];
                     }
                     let y = Tensor::of_slice(&y).view((BATCH_SIZE as i64, game::SIZE_ACTION as i64));
-                    let loss = fwd.mse_loss(&y, Reduction::Sum);
-                    print!("({}) ", Vec::from(&loss).iter().sum::<f32>()); /* Av. loss */
+                    let loss = fwd.mse_loss(&y, Reduction::Mean); /* Scalar tensor */
+                    print!("({:7.2e}) ", Vec::<f32>::from(&loss)[0]);
                     opt.backward_step(&loss);
                 }
             }
